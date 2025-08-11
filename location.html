@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Location Auto Update Demo</title>
+  <style>
+    body {
+      font-family: 'SolaimanLipi', Arial, sans-serif;
+      padding: 20px;
+      background: #f0f4f8;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+    }
+    #status {
+      margin: 15px 0;
+      padding: 10px;
+      background: #e1f5fe;
+      border: 1px solid #81d4fa;
+      border-radius: 5px;
+      max-width: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h1>আপনার বর্তমান লোকেশন আপডেট হচ্ছে</h1>
+  <div id="status">লোকেশন নেওয়া হবে...</div>
+  <div id="location"></div>
+
+  <script>
+    const statusDiv = document.getElementById('status');
+    const locationDiv = document.getElementById('location');
+
+    function showStatus(message) {
+      statusDiv.textContent = message;
+    }
+
+    function showLocation(lat, lon) {
+      locationDiv.textContent = `Latitude: ${lat.toFixed(6)}, Longitude: ${lon.toFixed(6)}`;
+    }
+
+    function getLocation() {
+      if (!navigator.geolocation) {
+        showStatus('দুঃখিত, আপনার ব্রাউজার লোকেশন সাপোর্ট করে না।');
+        return;
+      }
+
+      showStatus('লোকেশন নেওয়া হচ্ছে...');
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          showStatus('লোকেশন নেওয়া হয়েছে।');
+          showLocation(lat, lon);
+          console.log(`Lat: ${lat}, Lon: ${lon}`);
+        },
+        (error) => {
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              showStatus("আপনি লোকেশন অনুমতি দেননি।");
+              break;
+            case error.POSITION_UNAVAILABLE:
+              showStatus("লোকেশন পাওয়া যায়নি।");
+              break;
+            case error.TIMEOUT:
+              showStatus("লোকেশন নেওয়ার সময় শেষ হয়ে গেছে।");
+              break;
+            default:
+              showStatus("অজানা ত্রুটি হয়েছে।");
+          }
+        }
+      );
+    }
+
+    // প্রথমবার লোকেশন নিন
+    getLocation();
+
+    // ১০ মিনিট অন্তর লোকেশন আপডেট করুন (১০*৬০*১০০০ = ৬০০০০০ মিলিসেকেন্ড)
+    setInterval(getLocation, 10 * 60 * 1000);
+  </script>
+</body>
+</html>
