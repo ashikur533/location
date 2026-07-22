@@ -1,68 +1,570 @@
-<script type="module">
-  // Firebase import
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TA/DA Bill Report - Drag & Drop Columns</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: #f0f2f5;
+            padding: 20px;
+        }
 
-  // আপনার Firebase config এখানে বসান
-  const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    databaseURL: "https://YOUR_PROJECT.firebaseio.com",
-    projectId: "YOUR_PROJECT",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "SENDER_ID",
-    appId: "APP_ID"
-  };
+        /* Control Panel Setup */
+        .no-print {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 1400px;
+            margin: 0 auto 20px auto;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .grid-top {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .grid-full {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #2c3e50;
+        }
+        textarea {
+            width: 100%;
+            padding: 8px;
+            font-size: 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        #dataInput {
+            height: 120px;
+            background-color: #fffde7;
+            font-family: monospace;
+        }
 
-  // Firebase Init
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
+        /* Column Manager Panel Styling */
+        .col-manager-box {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        .col-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 5px;
+        }
+        
+        /* Drag & Drop Item Box */
+        .col-item {
+            display: flex;
+            align-items: center;
+            background: #ffffff;
+            border: 1px solid #bce8f1;
+            padding: 4px 6px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            cursor: grab;
+            transition: transform 0.1s ease;
+        }
+        .col-item:active {
+            cursor: grabbing;
+            opacity: 0.6;
+        }
+        .col-item.dragging {
+            border: 2px dashed #0056b3;
+            background: #e1f5fe;
+        }
+        .drag-handle {
+            color: #888;
+            margin-right: 4px;
+            font-size: 12px;
+            user-select: none;
+            cursor: grab;
+        }
+        .col-item input {
+            border: none;
+            outline: none;
+            font-size: 11px;
+            font-weight: bold;
+            color: #31708f;
+            width: 130px;
+            background: transparent;
+        }
+        .col-item .remove-btn {
+            color: #d9534f;
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: 5px;
+            font-size: 14px;
+            line-height: 1;
+        }
+        .add-col-btn {
+            background-color: #17a2b8 !important;
+            padding: 6px 12px !important;
+            font-size: 12px !important;
+            margin-top: 8px;
+        }
 
-  // Random user ID
-  let userId = localStorage.getItem('userId');
-  if (!userId) {
-    userId = 'user_' + Math.floor(Math.random() * 1000000);
-    localStorage.setItem('userId', userId);
-  }
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        button {
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button.print-btn {
+            background-color: #28a745;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
 
-  function getLocation() {
-    if (!navigator.geolocation) return;
+        /* Printable Area Setup */
+        .print-area {
+            background: white;
+            width: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 15px;
+            overflow-x: auto;
+        }
 
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      const timestamp = Date.now();
+        table.outer-wrapper-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
 
-      // Firebase এ লোকেশন আপডেট
-      set(ref(db, 'locations/' + userId), {
-        lat, lon, timestamp
-      });
-    });
-  }
+        .header-content {
+            padding-bottom: 8px;
+            border-bottom: 2px solid #000;
+            font-size: 11px;
+            font-weight: bold;
+            line-height: 1.4;
+            white-space: pre-line;
+            text-align: left;
+        }
 
-  // সব ইউজারের ডেটা listen করুন
-  const locationData = document.getElementById("locationData");
-  const locationsRef = ref(db, 'locations');
-  onValue(locationsRef, (snapshot) => {
-    const data = snapshot.val();
-    locationData.innerHTML = '';
-    if (!data) {
-      locationData.innerHTML = '<tr><td colspan="4">কোন ডেটা নেই</td></tr>';
-      return;
-    }
-    Object.keys(data).forEach(uid => {
-      const loc = data[uid];
-      const row = `<tr>
-        <td>${uid}</td>
-        <td>${loc.lat.toFixed(6)}</td>
-        <td>${loc.lon.toFixed(6)}</td>
-        <td>${new Date(loc.timestamp).toLocaleTimeString('bn-BD')}</td>
-      </tr>`;
-      locationData.innerHTML += row;
-    });
-  });
+        /* Data Grid Styling */
+        table.data-grid {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 8px;
+            margin-top: 10px;
+            table-layout: auto;
+        }
 
-  // প্রথমবার লোকেশন নিন
-  getLocation();
-  setInterval(getLocation, 5 * 60 * 1000);
-</script>
+        table.data-grid th, table.data-grid td {
+            border: 1px solid #333;
+            padding: 3px 2px;
+            text-align: center;
+            word-break: break-word;
+            position: relative;
+        }
+
+        table.data-grid th {
+            background-color: #e9ecef !important;
+            font-weight: bold;
+            font-size: 8px;
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        .resizer {
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            width: 5px;
+            background: rgba(0, 0, 0, 0.1);
+            cursor: col-resize;
+            user-select: none;
+        }
+        .resizer:hover, .resizing {
+            background: #0056b3 !important;
+            width: 6px;
+        }
+
+        .align-left { text-align: left !important; padding-left: 3px !important; }
+        .align-right { text-align: right !important; padding-right: 3px !important; }
+
+        /* Signatory Footer Area */
+        .footer-content {
+            padding-top: 30px;
+        }
+        .signatory-flex {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .sign-box {
+            border-top: 1px solid #000;
+            text-align: center;
+            font-size: 9.5px;
+            font-weight: bold;
+            flex: 1;
+            margin: 0 4px;
+            padding-top: 4px;
+        }
+
+        /* MULTI-PAGE PRINT CSS */
+        @media print {
+            html, body {
+                height: auto !important;
+                overflow: visible !important;
+                background: white !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .no-print { 
+                display: none !important; 
+            }
+            .resizer {
+                display: none !important;
+            }
+            .print-area { 
+                max-width: 100% !important; 
+                width: 100% !important;
+                padding: 0 !important; 
+                margin: 0 !important;
+                overflow: visible !important;
+            }
+            
+            @page {
+                size: A4 landscape;
+                margin: 8mm 6mm 8mm 6mm;
+            }
+
+            thead { 
+                display: table-header-group !important; 
+            }
+            tfoot { 
+                display: table-footer-group !important; 
+            }
+            tr { 
+                page-break-inside: avoid !important; 
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Control Panel -->
+    <div class="no-print">
+        <h2 style="margin-bottom: 15px; color: #1a365d;">TA/DA Statement (Drag & Reorder Columns)</h2>
+        
+        <div class="grid-top">
+            <div>
+                <label>1. Header Text (Prottek Page-er Mathay Repeats Thakbe):</label>
+                <textarea id="headerText" style="height: 70px;">To
+Managing Director
+Meghna Group of Industries
+Sub: TA/DA Bill (Meghna Pulp & Paper Mills Ltd.) for The Month May 2026
+15 & 22 Friday Sales Opened, 27 to 31 Eid Holiday. Working Day 24.</textarea>
+            </div>
+            <div>
+                <label>2. Signatory Footer (Page-er Niche Thakbe):</label>
+                <textarea id="footerText" style="height: 70px;">Sr. Executive (Sales Admin)
+DY. Manager (Accounts)
+Sr.Manager (Accounts)
+Sr DGM (Accounts)
+GM (Sales)</textarea>
+            </div>
+        </div>
+
+        <!-- DYNAMIC DRAGGABLE COLUMN MANAGER -->
+        <div class="col-manager-box">
+            <label>⚙️ Column Position Manager (::: handle dhore mouse drag kore column-er positionshamne/pichone soran):</label>
+            <div class="col-list" id="columnListContainer"></div>
+            <button class="add-col-btn" onclick="addNewColumnField()">+ Add New Column</button>
+        </div>
+
+        <div class="grid-full">
+            <label>3. Excel Data Box (Excel file theke Copy (Ctrl+C) kore ekhane Paste (Ctrl+V) korun):</label>
+            <textarea id="dataInput" placeholder="Excel-er sokol data Copy kore ekhane Paste korun..."></textarea>
+        </div>
+
+        <div class="btn-group">
+            <button onclick="generateTableFromPaste()">⚡ Process & Generate Table</button>
+            <button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button>
+        </div>
+    </div>
+
+    <!-- Printable Area Wrapper -->
+    <div class="print-area">
+        <table class="outer-wrapper-table">
+            <thead>
+                <tr>
+                    <td>
+                        <div class="header-content" id="headerOutput"></div>
+                    </td>
+                </tr>
+            </thead>
+
+            <tbody>
+                <tr>
+                    <td>
+                        <table class="data-grid" id="mainDataGrid">
+                            <thead id="tableHead"></thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </td>
+                </tr>
+            </tbody>
+
+            <tfoot>
+                <tr>
+                    <td>
+                        <div class="footer-content">
+                            <div class="signatory-flex" id="footerOutput"></div>
+                        </div>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <script>
+        // Initial Dynamic Column List
+        let targetColumns = [
+            "SL", "ID", "NAME", "DESIGNATION", "WORKING PLACE", "JOINING DATE",
+            "TARGET", "SALES", "ACH%", "Claimed HEAD QUARTER DA", "Claimed NIGHT HOLD",
+            "Claimed OUT QUARTER DA", "Claimed PGA BILL", "Claimed CONVEYANCE BILL",
+            "Claimed MOTOR CYCLE BILL", "Claimed CURIUR & OTHER'S BILL",
+            "TOTAL Claimed BILL", "Total PAYEBLE AMOUNT", "REMARKS"
+        ];
+
+        window.onload = function() {
+            renderHeaderAndFooter();
+            renderColumnManagerUI();
+            renderGridHeader();
+        };
+
+        function renderHeaderAndFooter() {
+            document.getElementById('headerOutput').innerText = document.getElementById('headerText').value;
+
+            const sigText = document.getElementById('footerText').value;
+            const sigLines = sigText.split('\n').filter(l => l.trim() !== '');
+            const footContainer = document.getElementById('footerOutput');
+            footContainer.innerHTML = '';
+
+            sigLines.forEach(title => {
+                const div = document.createElement('div');
+                div.className = 'sign-box';
+                div.innerText = title.trim();
+                footContainer.appendChild(div);
+            });
+        }
+
+        // Render Draggable Column Items
+        function renderColumnManagerUI() {
+            const container = document.getElementById('columnListContainer');
+            container.innerHTML = '';
+
+            targetColumns.forEach((colName, index) => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'col-item';
+                itemDiv.draggable = true;
+                itemDiv.dataset.index = index;
+
+                // Drag handle icon
+                const handle = document.createElement('span');
+                handle.className = 'drag-handle';
+                handle.innerText = ':::';
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = colName;
+                input.oninput = function(e) {
+                    targetColumns[index] = e.target.value;
+                    renderGridHeader();
+                };
+
+                const removeBtn = document.createElement('span');
+                removeBtn.className = 'remove-btn';
+                removeBtn.innerHTML = '&times;';
+                removeBtn.title = 'Delete Column';
+                removeBtn.onclick = function() {
+                    targetColumns.splice(index, 1);
+                    renderColumnManagerUI();
+                    renderGridHeader();
+                };
+
+                itemDiv.appendChild(handle);
+                itemDiv.appendChild(input);
+                itemDiv.appendChild(removeBtn);
+
+                // Add Drag and Drop Event Listeners
+                addDragEvents(itemDiv);
+
+                container.appendChild(itemDiv);
+            });
+        }
+
+        let draggedIndex = null;
+
+        function addDragEvents(item) {
+            item.addEventListener('dragstart', function(e) {
+                draggedIndex = parseInt(this.dataset.index);
+                this.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            item.addEventListener('dragend', function() {
+                this.classList.remove('dragging');
+            });
+
+            item.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+            });
+
+            item.addEventListener('drop', function(e) {
+                e.preventDefault();
+                const targetIndex = parseInt(this.dataset.index);
+
+                if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                    // Reorder the array
+                    const movedItem = targetColumns.splice(draggedIndex, 1)[0];
+                    targetColumns.splice(targetIndex, 0, movedItem);
+
+                    // Re-render UI and Table Header
+                    renderColumnManagerUI();
+                    renderGridHeader();
+
+                    // If table data is already loaded, re-render the rows
+                    const dataInput = document.getElementById('dataInput').value.trim();
+                    if(dataInput) {
+                        generateTableFromPaste();
+                    }
+                }
+            });
+        }
+
+        function addNewColumnField() {
+            targetColumns.push("NEW COLUMN");
+            renderColumnManagerUI();
+            renderGridHeader();
+        }
+
+        function renderGridHeader() {
+            const thead = document.getElementById('tableHead');
+            thead.innerHTML = '';
+            const hTr = document.createElement('tr');
+            
+            targetColumns.forEach((col) => {
+                const th = document.createElement('th');
+                th.innerText = col;
+
+                const resizer = document.createElement('div');
+                resizer.className = 'resizer';
+                th.appendChild(resizer);
+                
+                makeColumnResizable(th, resizer);
+                hTr.appendChild(th);
+            });
+            thead.appendChild(hTr);
+        }
+
+        function generateTableFromPaste() {
+            renderHeaderAndFooter();
+
+            const pastedText = document.getElementById('dataInput').value.trim();
+
+            if (!pastedText) {
+                alert("Doyakore 3no text box-e Excel theke data Copy-Paste korun!");
+                return;
+            }
+
+            const rows = pastedText.split('\n');
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            let dataRowStartIndex = 0;
+
+            const firstRowCells = rows[0].split('\t');
+            if (firstRowCells.some(c => c.toUpperCase().includes('SL') || c.toUpperCase().includes('NAME'))) {
+                dataRowStartIndex = 1; 
+            }
+
+            for (let i = dataRowStartIndex; i < rows.length; i++) {
+                const line = rows[i].trim();
+                if (!line) continue; 
+
+                const cells = line.split('\t');
+                const tr = document.createElement('tr');
+
+                for (let c = 0; c < targetColumns.length; c++) {
+                    const td = document.createElement('td');
+                    let cellVal = cells[c] !== undefined ? cells[c].trim() : '';
+                    
+                    if (c >= 2 && c <= 4) { 
+                        td.className = 'align-left';
+                    } else if (c >= 6 && c <= 17) { 
+                        td.className = 'align-right';
+                    }
+
+                    td.innerText = cellVal;
+                    tr.appendChild(td);
+                }
+
+                tbody.appendChild(tr);
+            }
+        }
+
+        function makeColumnResizable(th, resizer) {
+            let x = 0;
+            let w = 0;
+
+            const mouseDownHandler = function(e) {
+                x = e.clientX;
+                const styles = window.getComputedStyle(th);
+                w = parseInt(styles.width, 10);
+
+                document.addEventListener('mousemove', mouseMoveHandler);
+                document.addEventListener('mouseup', mouseUpHandler);
+                resizer.classList.add('resizing');
+            };
+
+            const mouseMoveHandler = function(e) {
+                const dx = e.clientX - x;
+                th.style.width = `${w + dx}px`;
+                th.style.minWidth = `${w + dx}px`;
+            };
+
+            const mouseUpHandler = function() {
+                document.removeEventListener('mousemove', mouseMoveHandler);
+                document.removeEventListener('mouseup', mouseUpHandler);
+                resizer.classList.remove('resizing');
+            };
+
+            resizer.addEventListener('mousedown', mouseDownHandler);
+        }
+    </script>
+</body>
+</html>
